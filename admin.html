@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Admin — FP10 Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Fira Sans', Arial, sans-serif;background:#f4f6f9;color:#1a1a2e;}
+  header{background:#1b3a6b;padding:12px 32px;display:flex;align-items:center;justify-content:space-between;}
+  .gdg-text-logo{display:flex;align-items:baseline;gap:6px;line-height:1;}
+  .gdg-text-logo-main{font-size:17px;font-weight:700;color:#fff;}
+  .gdg-text-logo-sub{font-size:12px;font-weight:400;color:rgba(255,255,255,0.65);}
+  .header-actions{display:flex;align-items:center;gap:8px;}
+  .btn-header{background:transparent;border:1px solid rgba(255,255,255,0.4);color:#fff;padding:7px 14px;border-radius:5px;font-size:0.85em;font-weight:600;cursor:pointer;}
+  .btn-header:hover{background:rgba(255,255,255,0.1);}
+
+  main{max-width:1000px;margin:0 auto;padding:32px 24px 60px;}
+  h1{font-size:1.5em;color:#1b3a6b;margin-bottom:4px;}
+  .subtitle{color:#5a6278;font-size:0.9em;margin-bottom:28px;}
+
+  .card{background:#fff;border-radius:8px;padding:24px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border:1px solid #e5e8ee;}
+  .card h2{font-size:1.05em;color:#1b3a6b;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;}
+
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+  .form-group{display:flex;flex-direction:column;gap:5px;}
+  .form-group.full{grid-column:1 / -1;}
+  label{font-size:0.8em;font-weight:600;color:#5a6278;}
+  input, select{padding:10px 12px;border:1px solid #d0d5dd;border-radius:6px;font-size:0.92em;font-family:inherit;}
+  input:focus, select:focus{outline:none;border-color:#e8176e;box-shadow:0 0 0 3px rgba(232,23,110,0.1);}
+
+  button.btn-primary{background:#e8176e;color:#fff;border:none;padding:11px 20px;border-radius:6px;font-weight:700;font-size:0.9em;cursor:pointer;}
+  button.btn-primary:hover:not(:disabled){background:#c4115c;}
+  button.btn-primary:disabled{opacity:0.6;cursor:not-allowed;}
+
+  table{width:100%;border-collapse:collapse;font-size:0.88em;}
+  th{text-align:left;padding:9px 10px;color:#5a6278;font-weight:600;font-size:0.82em;text-transform:uppercase;letter-spacing:0.03em;border-bottom:2px solid #e5e8ee;}
+  td{padding:10px;border-bottom:1px solid #eef0f4;vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+
+  .badge{display:inline-block;padding:3px 9px;border-radius:12px;font-size:0.78em;font-weight:700;}
+  .badge-active{background:#d4f4dd;color:#1a7a3c;}
+  .badge-suspended{background:#f8d7da;color:#a01c2e;}
+  .badge-role{background:#e3e9f7;color:#1b3a6b;margin-left:6px;}
+
+  .btn-toggle{padding:6px 12px;border-radius:5px;font-size:0.82em;font-weight:600;cursor:pointer;border:1px solid transparent;}
+  .btn-toggle.approve{background:#d4f4dd;color:#1a7a3c;border-color:#a8e0b8;}
+  .btn-toggle.approve:hover{background:#bdeecb;}
+  .btn-toggle.suspend{background:#f8d7da;color:#a01c2e;border-color:#eeb4bb;}
+  .btn-toggle.suspend:hover{background:#f3c1c7;}
+
+  .error{background:#f8d7da;color:#721c24;padding:10px 12px;border-radius:6px;font-size:0.85em;margin-bottom:14px;display:none;}
+  .error.show{display:block;}
+  .success{background:#d4f4dd;color:#1a7a3c;padding:10px 12px;border-radius:6px;font-size:0.85em;margin-bottom:14px;display:none;}
+  .success.show{display:block;}
+
+  .empty-state{color:#8a91a3;font-size:0.9em;padding:20px;text-align:center;}
+  .not-authorised{max-width:480px;margin:80px auto;text-align:center;color:#5a6278;}
+
+  select#userTrustSelect:disabled, select#userTrustSelect[readonly]{background:#f4f6f9;color:#8a91a3;}
+</style>
+</head>
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="shared/fp10-api.js"></script>
+
+<header>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="width:4px;height:32px;background:#e8176e;border-radius:2px;flex-shrink:0;"></div>
+    <div class="gdg-text-logo">
+      <span class="gdg-text-logo-main">GD&amp;G</span><span class="gdg-text-logo-sub">Special Projects™ — Admin</span>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-header" onclick="window.location.href='index.html'">Back to app</button>
+    <button class="btn-header" onclick="signOut()">Sign out</button>
+  </div>
+</header>
+
+<main id="mainContent">
+  <div class="empty-state">Loading…</div>
+</main>
+
+<script>
+let ME = null;
+
+async function init() {
+  const session = await requireSession();
+  if (!session) return;
+
+  ME = await getMyProfile();
+  const main = document.getElementById('mainContent');
+
+  if (!ME || !ME.isAdmin) {
+    main.innerHTML = `
+      <div class="not-authorised">
+        <h1 style="margin-bottom:10px;">Not authorised</h1>
+        <p>This page is only available to admin accounts.</p>
+      </div>`;
+    return;
+  }
+
+  render();
+}
+
+function render() {
+  const main = document.getElementById('mainContent');
+  main.innerHTML = `
+    <h1>${ME.isSuperuser ? 'Superuser Admin' : 'Trust Admin'}</h1>
+    <p class="subtitle">${ME.isSuperuser
+      ? 'Create trusts, create users of any role in any trust, and approve or suspend any account.'
+      : 'Create and approve or suspend users within your own trust.'}</p>
+
+    <div id="alertBox" class="error"></div>
+    <div id="successBox" class="success"></div>
+
+    ${ME.isSuperuser ? `
+    <div class="card">
+      <h2>Create a Trust</h2>
+      <form id="createTrustForm">
+        <div class="form-grid">
+          <div class="form-group full">
+            <label for="trustName">Trust name</label>
+            <input type="text" id="trustName" placeholder="e.g. University Hospitals Sussex NHS Foundation Trust" required />
+          </div>
+        </div>
+        <button type="submit" class="btn-primary">Create Trust</button>
+      </form>
+    </div>
+    ` : ''}
+
+    <div class="card">
+      <h2>Create a User</h2>
+      <form id="createUserForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="userFirstName">First name</label>
+            <input type="text" id="userFirstName" required />
+          </div>
+          <div class="form-group">
+            <label for="userLastName">Last name</label>
+            <input type="text" id="userLastName" required />
+          </div>
+          <div class="form-group">
+            <label for="userIdInput">User ID (what they log in with)</label>
+            <input type="text" id="userIdInput" placeholder="e.g. JSMITH1" required />
+          </div>
+          <div class="form-group">
+            <label for="userPasscode">Passcode (min 6 characters)</label>
+            <input type="password" id="userPasscode" minlength="6" required />
+          </div>
+          ${ME.isSuperuser ? `
+          <div class="form-group">
+            <label for="userTrustSelect">Trust</label>
+            <select id="userTrustSelect" required></select>
+          </div>
+          <div class="form-group">
+            <label for="userRoleSelect">Role</label>
+            <select id="userRoleSelect">
+              <option value="user">User</option>
+              <option value="admin">Trust Admin</option>
+            </select>
+          </div>
+          ` : ''}
+        </div>
+        <button type="submit" class="btn-primary">Create User (starts suspended — approve below)</button>
+      </form>
+    </div>
+
+    ${ME.isSuperuser ? `
+    <div class="card">
+      <h2>Trusts</h2>
+      <div id="trustsList"><div class="empty-state">Loading…</div></div>
+    </div>
+    ` : ''}
+
+    <div class="card">
+      <h2>${ME.isSuperuser ? 'All Users' : 'Your Trust\\'s Users'}</h2>
+      ${ME.isSuperuser ? `
+      <div class="form-group" style="max-width:320px;margin-bottom:14px;">
+        <label for="filterTrustSelect">Filter by trust</label>
+        <select id="filterTrustSelect"><option value="">All trusts</option></select>
+      </div>` : ''}
+      <div id="usersList"><div class="empty-state">Loading…</div></div>
+    </div>
+  `;
+
+  document.getElementById('createUserForm').addEventListener('submit', onCreateUser);
+  if (ME.isSuperuser) {
+    document.getElementById('createTrustForm').addEventListener('submit', onCreateTrust);
+    document.getElementById('filterTrustSelect').addEventListener('change', (e) => loadUsers(e.target.value));
+    loadTrustsIntoSelects();
+    loadTrusts();
+  }
+  loadUsers();
+}
+
+function showError(msg) {
+  const box = document.getElementById('alertBox');
+  box.textContent = msg;
+  box.classList.add('show');
+  document.getElementById('successBox').classList.remove('show');
+  setTimeout(() => box.classList.remove('show'), 6000);
+}
+
+function showSuccess(msg) {
+  const box = document.getElementById('successBox');
+  box.textContent = msg;
+  box.classList.add('show');
+  document.getElementById('alertBox').classList.remove('show');
+  setTimeout(() => box.classList.remove('show'), 6000);
+}
+
+async function loadTrustsIntoSelects() {
+  try {
+    const { trusts } = await callAdminUsers('list-trusts', {});
+    const options = trusts.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+    const userTrustSelect = document.getElementById('userTrustSelect');
+    const filterTrustSelect = document.getElementById('filterTrustSelect');
+    if (userTrustSelect) userTrustSelect.innerHTML = options || '<option value="">No trusts yet — create one above</option>';
+    if (filterTrustSelect) filterTrustSelect.insertAdjacentHTML('beforeend', options);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function loadTrusts() {
+  const container = document.getElementById('trustsList');
+  try {
+    const { trusts } = await callAdminUsers('list-trusts', {});
+    if (!trusts.length) {
+      container.innerHTML = '<div class="empty-state">No trusts yet — create one above.</div>';
+      return;
+    }
+    container.innerHTML = `
+      <table>
+        <thead><tr><th>Name</th><th>Logo set</th></tr></thead>
+        <tbody>
+          ${trusts.map(t => `
+            <tr>
+              <td>${escapeHtml(t.name)}</td>
+              <td>${t.logo_path ? '✅' : '— (set logo_path manually in Supabase)'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state">Couldn't load trusts.</div>`;
+    showError(err.message);
+  }
+}
+
+async function loadUsers(trustId) {
+  const container = document.getElementById('usersList');
+  container.innerHTML = '<div class="empty-state">Loading…</div>';
+  try {
+    const { users } = await callAdminUsers('list-users', trustId ? { trust_id: trustId } : {});
+    if (!users.length) {
+      container.innerHTML = '<div class="empty-state">No users yet.</div>';
+      return;
+    }
+    container.innerHTML = `
+      <table>
+        <thead><tr><th>Name</th><th>User ID</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${users.map(u => `
+            <tr>
+              <td>${escapeHtml([u.first_name, u.last_name].filter(Boolean).join(' ') || '—')}</td>
+              <td>${escapeHtml(u.user_id || '—')}</td>
+              <td><span class="badge badge-role">${escapeHtml(u.role)}</span></td>
+              <td>${u.active ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-suspended">Suspended</span>'}</td>
+              <td>${renderToggleButton(u)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+
+    container.querySelectorAll('[data-toggle-id]').forEach(btn => {
+      btn.addEventListener('click', () => onToggleActive(btn.dataset.toggleId, btn.dataset.toggleTo === 'true', trustId));
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state">Couldn't load users.</div>`;
+    showError(err.message);
+  }
+}
+
+function renderToggleButton(u) {
+  // Admins (non-superuser) can only act on ordinary users in their own trust —
+  // the Edge Function enforces this too, this just avoids showing a button
+  // that would immediately fail.
+  if (!ME.isSuperuser && u.role !== 'user') return '';
+  if (u.active) {
+    return `<button class="btn-toggle suspend" data-toggle-id="${u.id}" data-toggle-to="false">Suspend</button>`;
+  }
+  return `<button class="btn-toggle approve" data-toggle-id="${u.id}" data-toggle-to="true">Approve</button>`;
+}
+
+async function onToggleActive(id, active, trustId) {
+  try {
+    await callAdminUsers('set-active', { id, active });
+    showSuccess(active ? 'Account approved.' : 'Account suspended.');
+    loadUsers(trustId);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function onCreateTrust(e) {
+  e.preventDefault();
+  const name = document.getElementById('trustName').value.trim();
+  try {
+    await callAdminUsers('create-trust', { name });
+    showSuccess(`Trust "${name}" created.`);
+    document.getElementById('createTrustForm').reset();
+    loadTrustsIntoSelects();
+    loadTrusts();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function onCreateUser(e) {
+  e.preventDefault();
+  const payload = {
+    first_name: document.getElementById('userFirstName').value.trim(),
+    last_name: document.getElementById('userLastName').value.trim(),
+    user_id: document.getElementById('userIdInput').value.trim(),
+    passcode: document.getElementById('userPasscode').value,
+  };
+  if (ME.isSuperuser) {
+    payload.trust_id = document.getElementById('userTrustSelect').value;
+    payload.role = document.getElementById('userRoleSelect').value;
+  }
+  try {
+    await callAdminUsers('create-user', payload);
+    showSuccess(`User "${payload.user_id}" created — suspended until approved below.`);
+    document.getElementById('createUserForm').reset();
+    loadUsers(ME.isSuperuser ? document.getElementById('filterTrustSelect').value : undefined);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
+}
+
+init();
+</script>
+</body>
+</html>
