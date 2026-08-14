@@ -222,6 +222,14 @@
   if (!session) return; // requireSession already redirected to login.html
 
   const profile = await getMyProfile();
+  if (profile?.isVerifier) {
+    window.location.href = 'verify.html';
+    return;
+  }
+  if (profile?.isAuditor) {
+    window.location.href = 'auditor.html';
+    return;
+  }
   if (profile?.isAdmin) document.getElementById('adminBtn').style.display = 'inline-block';
 
   const trust = await getMyTrust();

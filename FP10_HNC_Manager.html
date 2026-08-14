@@ -667,7 +667,8 @@ const PAD_KEY     = 'fp10_last_pad_count';
 const SESSION_STATE = {
   registers: [],
   sessionDate: new Date().toLocaleDateString('en-GB'),
-  generatedBy: ''
+  generatedBy: '',
+  costCentre: ''
 };
 
 // ============================================================================
@@ -680,19 +681,24 @@ function saveSession() {
       registers: SESSION_STATE.registers,
       sessionDate: SESSION_STATE.sessionDate,
       generatedBy: SESSION_STATE.generatedBy,
+      costCentre: SESSION_STATE.costCentre,
       savedAt: Date.now()
     }));
   } catch (e) { /* quota exceeded, ignore */ }
 }
+
+const SESSION_WINDOW_MS = 30 * 60 * 1000; // 30 minutes — reduced from 24 hours
 
 function loadSavedSession() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    // Only offer restore if saved within the last 24 hours
+    // Only offer restore if saved within the last 30 minutes — protects
+    // against accidental window closure without keeping stale sessions
+    // around indefinitely.
     if (!data.registers || !data.registers.length) return null;
-    if (Date.now() - (data.savedAt || 0) > 86400000) {
+    if (Date.now() - (data.savedAt || 0) > SESSION_WINDOW_MS) {
       localStorage.removeItem(STORAGE_KEY);
       return null;
     }
@@ -724,6 +730,8 @@ const TRUST_READY = (async () => {
   if (!session) return; // requireSession already redirected to login.html
   CURRENT_TRUST = await getMyTrust();
   CURRENT_PROFILE = await getMyProfile();
+  if (CURRENT_PROFILE?.isVerifier) { window.location.href = 'verify.html'; return; }
+  if (CURRENT_PROFILE?.isAuditor) { window.location.href = 'auditor.html'; return; }
 })();
 
 // ============================================================================
@@ -843,10 +851,12 @@ window.restoreSession = function() {
   if (!data) return;
   SESSION_STATE.registers = data.registers;
   SESSION_STATE.sessionDate = data.sessionDate;
+  SESSION_STATE.costCentre = data.costCentre || '';
   // Note: generatedBy is intentionally NOT restored from saved data — it
   // always reflects the currently logged-in account, not a past session's.
   document.getElementById('sessionDate').textContent = SESSION_STATE.sessionDate;
   document.getElementById('restoreBannerContainer').innerHTML = '';
+  applyCostCentreLock();
   updateRegistersList();
 };
 
@@ -889,6 +899,24 @@ padCountInput.addEventListener('input', () => {
   saveLastPadCount(padCountInput.value);
   validateForm();
 });
+
+// The cost centre is fixed for the whole session — once the first register
+// is created, this locks the field so every register in this session uses
+// the same one, rather than allowing a mix (e.g. RYR73, then RYR76).
+function applyCostCentreLock() {
+  if (SESSION_STATE.costCentre) {
+    fp10CodeInput.value = SESSION_STATE.costCentre;
+    fp10CodeInput.readOnly = true;
+    fp10CodeInput.style.background = 'var(--bg-alt)';
+    fp10CodeInput.style.color = 'var(--text-muted)';
+    fp10CodeInput.style.cursor = 'not-allowed';
+  } else {
+    fp10CodeInput.readOnly = false;
+    fp10CodeInput.style.background = '';
+    fp10CodeInput.style.color = '';
+    fp10CodeInput.style.cursor = '';
+  }
+}
 
 let _validateInFlight = false;
 
@@ -959,6 +987,13 @@ document.getElementById('fp10Form').addEventListener('submit', async function(e)
     // supabase/functions/fp10-logic/serial.ts
     const { serials } = await callFp10Logic('generate-pad', { first, second, padCount, deptCode: departmentCode });
 
+    // Lock the cost centre in for the rest of this session on the first
+    // register — every subsequent register uses this same one.
+    if (!SESSION_STATE.costCentre) {
+      SESSION_STATE.costCentre = departmentCode;
+      applyCostCentreLock();
+    }
+
     SESSION_STATE.registers.push({
       departmentCode,
       serials,
@@ -966,6 +1001,7 @@ document.getElementById('fp10Form').addEventListener('submit', async function(e)
     });
 
     updateRegistersList();
+    saveSession();
 
     // Keep the modal open — just clear the serial fields so the user can
     // immediately enter the next pad. Department code and pad count are
@@ -990,13 +1026,15 @@ document.getElementById('fp10Form').addEventListener('submit', async function(e)
 
 document.getElementById('addRegisterBtn').addEventListener('click', () => {
   document.getElementById('addRegisterModal').style.display = 'flex';
-  setTimeout(() => fp10CodeInput.focus(), 100);
+  applyCostCentreLock();
+  setTimeout(() => (SESSION_STATE.costCentre ? serialInputs[0] : fp10CodeInput).focus(), 100);
 });
 
 document.getElementById('cancelBtn').addEventListener('click', () => {
   document.getElementById('addRegisterModal').style.display = 'none';
   document.getElementById('fp10Form').reset();
   padCountInput.value = loadLastPadCount();
+  applyCostCentreLock();
   serialInputs.forEach(i => i.classList.remove('valid','invalid'));
   generateBtn.disabled = true;
 });
@@ -1115,6 +1153,13 @@ async function generateRegisterPDF(register) {
     pdf.setFont('helvetica', 'bold');
     pdf.text(`Speciality/Trust code: ${register.departmentCode}`, 10, 37);
 
+    if (SESSION_STATE.costCentre) {
+      pdf.setFontSize(20);
+      pdf.setTextColor(232, 23, 110);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(SESSION_STATE.costCentre, pageWidth - 10, 20, { align: 'right' });
+    }
+
     pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
     pdf.text(`FP10 serial number range: ${serialRange}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
@@ -1157,6 +1202,14 @@ async function generateLogPDF() {
   pdf.setTextColor(46, 94, 158);
   pdf.setFont('helvetica', 'bold');
   pdf.text('FP10 Register Session Log - Pharmacy Copy', pageWidth / 2, 35, { align: 'center' });
+
+  // Cost centre — same for the whole session — shown prominently top-right
+  if (SESSION_STATE.costCentre) {
+    pdf.setFontSize(22);
+    pdf.setTextColor(232, 23, 110);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(SESSION_STATE.costCentre, pageWidth - 10, 20, { align: 'right' });
+  }
 
   pdf.setFontSize(10);
   pdf.setTextColor(0, 0, 0);
@@ -1278,11 +1331,13 @@ window.confirmClearSession = function(btn) {
 
 window.clearSession = function() {
   SESSION_STATE.registers = [];
+  SESSION_STATE.costCentre = '';
   clearSavedSession();
   const fullName = CURRENT_PROFILE?.fullName || '';
   document.getElementById('generatedBy').value = fullName;
   SESSION_STATE.generatedBy = fullName;
   document.getElementById('endSessionBtn').style.display = 'none';
+  applyCostCentreLock();
   updateRegistersList();
 };
 

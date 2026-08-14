@@ -332,6 +332,8 @@ const TRUST_READY = (async () => {
   if (!session) return; // requireSession already redirected to login.html
   CURRENT_TRUST = await getMyTrust();
   CURRENT_PROFILE = await getMyProfile();
+  if (CURRENT_PROFILE?.isVerifier) { window.location.href = 'verify.html'; return; }
+  if (CURRENT_PROFILE?.isAuditor) { window.location.href = 'auditor.html'; return; }
   const nameField = document.getElementById('generatedBy');
   if (nameField && CURRENT_PROFILE) nameField.value = CURRENT_PROFILE.fullName;
 })();

@@ -168,8 +168,8 @@
     const passcode = document.getElementById('passcode').value;
 
     try {
-      await signInWithUserId(userId, passcode);
-      window.location.href = 'index.html';
+      const { mustResetPassword } = await signInWithUserId(userId, passcode);
+      window.location.href = mustResetPassword ? 'reset-password.html' : 'index.html';
     } catch (err) {
       errorBox.textContent = err.message;
       errorBox.classList.add('show');
