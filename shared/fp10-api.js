@@ -43,13 +43,15 @@ async function signInWithUserId(userId, passcode) {
   // silently empty app.
   const { data: profile } = await supabaseClient
     .from('profiles')
-    .select('active')
+    .select('active, must_reset_password')
     .single();
 
   if (!profile?.active) {
     await supabaseClient.auth.signOut();
     throw new Error('Your account is suspended or awaiting approval. Contact your administrator.');
   }
+
+  return { mustResetPassword: !!profile.must_reset_password };
 }
 
 /**
@@ -66,7 +68,7 @@ async function requireSession() {
 
   const { data: profile } = await supabaseClient
     .from('profiles')
-    .select('active')
+    .select('active, must_reset_password')
     .eq('id', session.user.id)
     .single();
 
@@ -76,7 +78,28 @@ async function requireSession() {
     return null;
   }
 
+  // Force the reset-password flow to complete before anything else — every
+  // protected page calls requireSession, so this catches it everywhere,
+  // not just right after login.
+  const onResetPage = window.location.pathname.endsWith('reset-password.html');
+  if (profile.must_reset_password && !onResetPage) {
+    window.location.href = 'reset-password.html';
+    return null;
+  }
+
   return session;
+}
+
+/**
+ * Sets a new passcode for the currently signed-in account and clears the
+ * forced-reset flag. Used by reset-password.html.
+ */
+async function setMyPassword(newPasscode) {
+  const { error: pwError } = await supabaseClient.auth.updateUser({ password: newPasscode });
+  if (pwError) throw new Error(pwError.message);
+
+  const { error: rpcError } = await supabaseClient.rpc('clear_must_reset_password');
+  if (rpcError) throw new Error(rpcError.message);
 }
 
 /**
@@ -90,13 +113,13 @@ async function getMyProfile() {
 
   const { data: profile } = await supabaseClient
     .from('profiles')
-    .select('user_id, first_name, last_name, role, trust_id, active')
+    .select('id, user_id, first_name, last_name, role, trust_id, active')
     .eq('id', user.id)
     .single();
 
   if (!profile) return null;
   const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.user_id;
-  return { ...profile, fullName, isAdmin: profile.role === 'admin' || profile.role === 'superuser', isSuperuser: profile.role === 'superuser' };
+  return { ...profile, fullName, isAdmin: profile.role === 'admin' || profile.role === 'superuser', isSuperuser: profile.role === 'superuser', isVerifier: profile.role === 'verifier', isAuditor: profile.role === 'auditor' };
 }
 
 /**
@@ -169,6 +192,23 @@ async function callEdgeFunction(functionName, action, payload) {
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || 'Something went wrong processing that request.');
   return body;
+}
+
+/**
+ * Re-confirms the currently signed-in user's own password before a
+ * destructive action (deleting an account or a trust). Re-authenticates
+ * against Supabase directly — if the password is wrong, this throws and
+ * the caller should not proceed. This is a step-up confirmation (protects
+ * against someone else at an already-unlocked session, or a misclick),
+ * not the actual permission check — the Edge Function still independently
+ * verifies the caller is a superuser regardless.
+ */
+async function confirmMyPassword(passcode) {
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user?.email) throw new Error('Could not verify your session — please log in again.');
+
+  const { error } = await supabaseClient.auth.signInWithPassword({ email: user.email, password: passcode });
+  if (error) throw new Error('Incorrect passcode — nothing was deleted.');
 }
 
 async function signOut() {
