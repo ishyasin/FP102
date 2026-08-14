@@ -297,7 +297,7 @@ async function loadTrusts() {
     }
     container.innerHTML = `
       <table>
-        <thead><tr><th>Name</th><th>Logo</th></tr></thead>
+        <thead><tr><th>Name</th><th>Logo</th><th></th></tr></thead>
         <tbody>
           ${trusts.map(t => `
             <tr>
@@ -308,6 +308,7 @@ async function loadTrusts() {
                   <input type="file" accept="image/png" data-logo-trust-id="${t.id}" />
                 </div>
               </td>
+              <td><button class="btn-small danger" data-delete-trust-id="${t.id}" data-delete-trust-name="${escapeHtml(t.name)}">Delete</button></td>
             </tr>
           `).join('')}
         </tbody>
@@ -316,8 +317,28 @@ async function loadTrusts() {
     container.querySelectorAll('[data-logo-trust-id]').forEach(input => {
       input.addEventListener('change', () => onUploadLogo(input));
     });
+    container.querySelectorAll('[data-delete-trust-id]').forEach(btn => {
+      btn.addEventListener('click', () => onDeleteTrust(btn.dataset.deleteTrustId, btn.dataset.deleteTrustName));
+    });
   } catch (err) {
     container.innerHTML = `<div class="empty-state">Couldn't load trusts.</div>`;
+    showError(err.message);
+  }
+}
+
+async function onDeleteTrust(id, name) {
+  if (!confirm(`Permanently delete "${name}"?\n\nThis only works if it has no users and no log entries left — delete/reassign users and export+clear logs first if needed. This cannot be undone.`)) return;
+
+  const passcode = prompt('Confirm your own passcode to proceed with deletion:');
+  if (passcode === null) return;
+
+  try {
+    await confirmMyPassword(passcode);
+    await callAdminUsers('delete-trust', { id });
+    showSuccess(`"${name}" deleted.`);
+    loadTrustsIntoSelects();
+    loadTrusts();
+  } catch (err) {
     showError(err.message);
   }
 }
@@ -361,7 +382,7 @@ async function loadUsers(trustId) {
     }
     container.innerHTML = `
       <table>
-        <thead><tr><th>Name</th><th>User ID</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>User ID</th><th>Role</th><th>Status</th><th></th><th></th></tr></thead>
         <tbody>
           ${users.map(u => `
             <tr>
@@ -370,6 +391,7 @@ async function loadUsers(trustId) {
               <td><span class="badge badge-role">${escapeHtml(roleDisplayName(u.role))}</span></td>
               <td>${renderStatusToggle(u)}</td>
               <td>${renderResetButton(u)}</td>
+              <td>${renderDeleteUserButton(u)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -381,20 +403,32 @@ async function loadUsers(trustId) {
     container.querySelectorAll('[data-reset-id]').forEach(btn => {
       btn.addEventListener('click', () => onResetPassword(btn.dataset.resetId, trustId));
     });
+    container.querySelectorAll('[data-delete-user-id]').forEach(btn => {
+      btn.addEventListener('click', () => onDeleteUser(btn.dataset.deleteUserId, btn.dataset.deleteUserName, trustId));
+    });
   } catch (err) {
     container.innerHTML = `<div class="empty-state">Couldn't load users.</div>`;
     showError(err.message);
   }
 }
 
+function isSelf(u) {
+  return u.id === ME.id;
+}
+
 function canActOn(u) {
-  // Admins (non-superuser) can only act on ordinary users in their own trust —
-  // the Edge Function enforces this too, this just avoids showing controls
-  // that would immediately fail.
+  // Never allow acting on your own row — a superuser can't suspend or
+  // delete themselves. Admins (non-superuser) can only act on ordinary
+  // users in their own trust — the Edge Function enforces both of these
+  // too, this just avoids showing controls that would immediately fail.
+  if (isSelf(u)) return false;
   return ME.isSuperuser || u.role === 'user';
 }
 
 function renderStatusToggle(u) {
+  if (isSelf(u)) {
+    return `<span class="status-dot on" style="display:inline-block;"></span> <span class="status-label on">Active (you)</span>`;
+  }
   if (!canActOn(u)) {
     return u.active
       ? '<span class="status-dot on" style="display:inline-block;"></span> <span class="status-label on">Active</span>'
@@ -415,10 +449,32 @@ function renderResetButton(u) {
   return `<button class="btn-small" data-reset-id="${u.id}">Reset passcode</button>`;
 }
 
+function renderDeleteUserButton(u) {
+  if (!ME.isSuperuser || isSelf(u)) return '';
+  const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.user_id;
+  return `<button class="btn-small danger" data-delete-user-id="${u.id}" data-delete-user-name="${escapeHtml(name)}">Delete</button>`;
+}
+
 async function onToggleActive(id, active, trustId) {
   try {
     await callAdminUsers('set-active', { id, active });
     showSuccess(active ? 'Account approved.' : 'Account suspended.');
+    loadUsers(trustId);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function onDeleteUser(id, name, trustId) {
+  if (!confirm(`Permanently delete the account for ${name}?\n\nTheir past log entries are kept — only the login itself is removed. This cannot be undone.`)) return;
+
+  const passcode = prompt('Confirm your own passcode to proceed with deletion:');
+  if (passcode === null) return;
+
+  try {
+    await confirmMyPassword(passcode);
+    await callAdminUsers('delete-user', { id });
+    showSuccess(`${name}'s account deleted.`);
     loadUsers(trustId);
   } catch (err) {
     showError(err.message);
