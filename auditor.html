@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Audit — FP10 Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Fira Sans', Arial, sans-serif;background:#f4f6f9;color:#1a1a2e;}
+  header{background:#1b3a6b;padding:12px 32px;display:flex;align-items:center;justify-content:space-between;}
+  .gdg-text-logo{display:flex;align-items:baseline;gap:6px;line-height:1;}
+  .gdg-text-logo-main{font-size:17px;font-weight:700;color:#fff;}
+  .gdg-text-logo-sub{font-size:12px;font-weight:400;color:rgba(255,255,255,0.65);}
+  .btn-header{background:transparent;border:1px solid rgba(255,255,255,0.4);color:#fff;padding:7px 14px;border-radius:5px;font-size:0.85em;font-weight:600;cursor:pointer;}
+  .btn-header:hover{background:rgba(255,255,255,0.1);}
+
+  main{max-width:1150px;margin:0 auto;padding:32px 24px 60px;}
+  h1{font-size:1.5em;color:#1b3a6b;margin-bottom:4px;}
+  .subtitle{color:#5a6278;font-size:0.9em;margin-bottom:24px;}
+
+  .card{background:#fff;border-radius:8px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border:1px solid #e5e8ee;}
+  .search-grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;align-items:end;}
+  .form-group{display:flex;flex-direction:column;gap:5px;}
+  label{font-size:0.78em;font-weight:600;color:#5a6278;}
+  input{padding:9px 11px;border:1px solid #d0d5dd;border-radius:6px;font-size:0.88em;font-family:inherit;}
+  input:focus{outline:none;border-color:#e8176e;box-shadow:0 0 0 3px rgba(232,23,110,0.1);}
+
+  button.btn-primary{background:#e8176e;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:700;font-size:0.87em;cursor:pointer;}
+  button.btn-primary:hover:not(:disabled){background:#c4115c;}
+  button.btn-secondary{background:#fff;color:#1b3a6b;border:1px solid #d0d5dd;padding:9px 16px;border-radius:6px;font-weight:600;font-size:0.85em;cursor:pointer;}
+  button.btn-secondary:hover{background:#f4f6f9;}
+
+  table{width:100%;border-collapse:collapse;font-size:0.86em;}
+  th{text-align:left;padding:9px 8px;color:#5a6278;font-weight:600;font-size:0.8em;text-transform:uppercase;letter-spacing:0.03em;border-bottom:2px solid #e5e8ee;}
+  td{padding:9px 8px;border-bottom:1px solid #eef0f4;vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr.voided td{opacity:0.5;}
+
+  .badge{display:inline-block;padding:3px 9px;border-radius:12px;font-size:0.76em;font-weight:700;white-space:nowrap;}
+  .badge-pending{background:#fff3cd;color:#8a6416;}
+  .badge-verified{background:#d4f4dd;color:#1a7a3c;}
+  .badge-voided{background:#f8d7da;color:#a01c2e;}
+
+  .empty-state{color:#8a91a3;font-size:0.9em;padding:20px;text-align:center;}
+  .not-authorised{max-width:480px;margin:80px auto;text-align:center;color:#5a6278;}
+  .result-count{color:#5a6278;font-size:0.85em;margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="shared/fp10-api.js"></script>
+
+<header>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="width:4px;height:32px;background:#e8176e;border-radius:2px;flex-shrink:0;"></div>
+    <div class="gdg-text-logo">
+      <span class="gdg-text-logo-main">GD&amp;G</span><span class="gdg-text-logo-sub">Special Projects™ — Audit</span>
+    </div>
+  </div>
+  <button class="btn-header" onclick="signOut()">Sign out</button>
+</header>
+
+<main id="mainContent">
+  <div class="empty-state">Loading…</div>
+</main>
+
+<script>
+let ME = null;
+
+async function init() {
+  const session = await requireSession();
+  if (!session) return;
+
+  ME = await getMyProfile();
+  const main = document.getElementById('mainContent');
+
+  if (!ME || (!ME.isAuditor && !ME.isSuperuser)) {
+    main.innerHTML = `
+      <div class="not-authorised">
+        <h1 style="margin-bottom:10px;">Not authorised</h1>
+        <p>This page is only available to auditor accounts.</p>
+      </div>`;
+    return;
+  }
+
+  render();
+  runSearch(); // show everything for the trust by default
+}
+
+function render() {
+  document.getElementById('mainContent').innerHTML = `
+    <h1>Audit</h1>
+    <p class="subtitle">Search every generated FP10SS/FP10HNC entry by serial number, department, or date.</p>
+
+    <div class="card">
+      <div class="search-grid">
+        <div class="form-group">
+          <label for="serialInput">Serial number</label>
+          <input type="text" id="serialInput" placeholder="e.g. 12345678901" inputmode="numeric" />
+        </div>
+        <div class="form-group">
+          <label for="deptInput">Department / cost centre</label>
+          <input type="text" id="deptInput" placeholder="e.g. RYR73" />
+        </div>
+        <div class="form-group">
+          <label for="dateFromInput">From</label>
+          <input type="date" id="dateFromInput" />
+        </div>
+        <div class="form-group">
+          <label for="dateToInput">To</label>
+          <input type="date" id="dateToInput" />
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px;">
+        <button class="btn-primary" id="searchBtn">Search</button>
+        <button class="btn-secondary" id="clearBtn">Clear</button>
+      </div>
+    </div>
+
+    <div id="resultsArea"><div class="empty-state">Loading…</div></div>
+  `;
+
+  document.getElementById('searchBtn').addEventListener('click', runSearch);
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    document.getElementById('serialInput').value = '';
+    document.getElementById('deptInput').value = '';
+    document.getElementById('dateFromInput').value = '';
+    document.getElementById('dateToInput').value = '';
+    runSearch();
+  });
+}
+
+async function runSearch() {
+  const resultsArea = document.getElementById('resultsArea');
+  resultsArea.innerHTML = '<div class="empty-state">Searching…</div>';
+
+  const payload = {};
+  const serial = document.getElementById('serialInput')?.value.trim();
+  const dept = document.getElementById('deptInput')?.value.trim();
+  const dateFrom = document.getElementById('dateFromInput')?.value;
+  const dateTo = document.getElementById('dateToInput')?.value;
+  if (serial) payload.serial = serial;
+  if (dept) payload.department = dept;
+  if (dateFrom) payload.date_from = new Date(dateFrom + 'T00:00:00').toISOString();
+  if (dateTo) payload.date_to = new Date(dateTo + 'T23:59:59').toISOString();
+
+  try {
+    const { entries } = await callAdminUsers('list-log-entries', payload);
+    renderResults(entries);
+  } catch (err) {
+    resultsArea.innerHTML = `<div class="empty-state">Couldn't search: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderResults(entries) {
+  const resultsArea = document.getElementById('resultsArea');
+  if (!entries.length) {
+    resultsArea.innerHTML = '<div class="empty-state">No matching entries.</div>';
+    return;
+  }
+  resultsArea.innerHTML = `
+    <div class="result-count">${entries.length} result${entries.length === 1 ? '' : 's'}</div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>App</th><th>Cost Centre</th><th>Processed By</th>
+            <th>First</th><th>Last</th><th>Total</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${entries.map(rowHtml).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function rowHtml(e) {
+  const p = e.payload || {};
+  const date = new Date(e.created_at).toLocaleString('en-GB');
+  const appLabel = e.app === 'ss' ? 'FP10SS' : 'FP10HNC';
+  const status = e.voided ? '<span class="badge badge-voided">Voided</span>'
+    : e.verified ? '<span class="badge badge-verified">Verified</span>'
+    : '<span class="badge badge-pending">Pending</span>';
+
+  return `
+    <tr class="${e.voided ? 'voided' : ''}">
+      <td>${escapeHtml(date)}</td>
+      <td>${appLabel}</td>
+      <td>${escapeHtml(p.deptCode || '—')}</td>
+      <td>${escapeHtml(p.processedBy || '—')}</td>
+      <td>${escapeHtml(String(p.first ?? '—'))}</td>
+      <td>${escapeHtml(String(p.last ?? '—'))}</td>
+      <td>${escapeHtml(String(p.total ?? '—'))}</td>
+      <td>${status}</td>
+    </tr>`;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
+}
+
+init();
+</script>
+</body>
+</html>

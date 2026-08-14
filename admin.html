@@ -16,7 +16,7 @@
   .btn-header{background:transparent;border:1px solid rgba(255,255,255,0.4);color:#fff;padding:7px 14px;border-radius:5px;font-size:0.85em;font-weight:600;cursor:pointer;}
   .btn-header:hover{background:rgba(255,255,255,0.1);}
 
-  main{max-width:1000px;margin:0 auto;padding:32px 24px 60px;}
+  main{max-width:1150px;margin:0 auto;padding:32px 24px 60px;}
   h1{font-size:1.5em;color:#1b3a6b;margin-bottom:4px;}
   .subtitle{color:#5a6278;font-size:0.9em;margin-bottom:28px;}
 
@@ -34,21 +34,43 @@
   button.btn-primary:hover:not(:disabled){background:#c4115c;}
   button.btn-primary:disabled{opacity:0.6;cursor:not-allowed;}
 
-  table{width:100%;border-collapse:collapse;font-size:0.88em;}
-  th{text-align:left;padding:9px 10px;color:#5a6278;font-weight:600;font-size:0.82em;text-transform:uppercase;letter-spacing:0.03em;border-bottom:2px solid #e5e8ee;}
-  td{padding:10px;border-bottom:1px solid #eef0f4;vertical-align:middle;}
+  table{width:100%;border-collapse:collapse;font-size:0.86em;}
+  th{text-align:left;padding:9px 8px;color:#5a6278;font-weight:600;font-size:0.8em;text-transform:uppercase;letter-spacing:0.03em;border-bottom:2px solid #e5e8ee;}
+  td{padding:9px 8px;border-bottom:1px solid #eef0f4;vertical-align:middle;}
   tr:last-child td{border-bottom:none;}
+  tr.voided td{opacity:0.5;}
 
   .badge{display:inline-block;padding:3px 9px;border-radius:12px;font-size:0.78em;font-weight:700;}
   .badge-active{background:#d4f4dd;color:#1a7a3c;}
   .badge-suspended{background:#f8d7da;color:#a01c2e;}
   .badge-role{background:#e3e9f7;color:#1b3a6b;margin-left:6px;}
+  .badge-pending{background:#fff3cd;color:#8a6416;}
+  .badge-verified{background:#d4f4dd;color:#1a7a3c;}
+  .badge-voided{background:#f8d7da;color:#a01c2e;}
+
+  /* Glowing status dot + toggle, used instead of separate Approve/Suspend buttons */
+  .status-toggle{display:inline-flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:5px;font-size:0.85em;font-weight:600;font-family:inherit;}
+  .status-toggle:hover{background:#f4f6f9;}
+  .status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .status-dot.on{background:#2ecc71;box-shadow:0 0 6px 2px rgba(46,204,113,0.6);animation:dotPulse 1.8s ease-in-out infinite;}
+  .status-dot.off{background:#e74c3c;box-shadow:0 0 6px 2px rgba(231,76,60,0.5);}
+  @keyframes dotPulse{0%,100%{opacity:1;}50%{opacity:0.55;}}
+  .status-label.on{color:#1a7a3c;}
+  .status-label.off{color:#a01c2e;}
+
+  .btn-small{padding:6px 12px;border-radius:5px;font-size:0.8em;font-weight:600;cursor:pointer;border:1px solid #d0d5dd;background:#fff;color:#1b3a6b;}
+  .btn-small:hover{background:#f4f6f9;}
+  .btn-small.danger{border-color:#eeb4bb;color:#a01c2e;background:#fff5f5;}
+  .btn-small.danger:hover{background:#fce8e9;}
 
   .btn-toggle{padding:6px 12px;border-radius:5px;font-size:0.82em;font-weight:600;cursor:pointer;border:1px solid transparent;}
   .btn-toggle.approve{background:#d4f4dd;color:#1a7a3c;border-color:#a8e0b8;}
   .btn-toggle.approve:hover{background:#bdeecb;}
   .btn-toggle.suspend{background:#f8d7da;color:#a01c2e;border-color:#eeb4bb;}
   .btn-toggle.suspend:hover{background:#f3c1c7;}
+
+  .logo-upload-cell{display:flex;align-items:center;gap:8px;}
+  .logo-upload-cell input[type=file]{font-size:0.78em;max-width:170px;}
 
   .error{background:#f8d7da;color:#721c24;padding:10px 12px;border-radius:6px;font-size:0.85em;margin-bottom:14px;display:none;}
   .error.show{display:block;}
@@ -159,7 +181,9 @@ function render() {
           <div class="form-group">
             <label for="userRoleSelect">Role</label>
             <select id="userRoleSelect">
-              <option value="user">User</option>
+              <option value="user">Pharmacy Assistant</option>
+              <option value="verifier">Pharmacy Technician</option>
+              <option value="auditor">Auditor</option>
               <option value="admin">Trust Admin</option>
             </select>
           </div>
@@ -176,6 +200,32 @@ function render() {
     </div>
     ` : ''}
 
+    ${ME.isSuperuser ? `
+    <div class="card">
+      <h2>Export &amp; Clear Logs</h2>
+      <p style="color:#5a6278;font-size:0.87em;margin-bottom:16px;line-height:1.5;">
+        Download every generated-document entry for a trust as a CSV (no limit — the full history),
+        then optionally clear entries older than a date once you've saved that copy off. Clearing is
+        a genuine, permanent delete — unlike voiding, it does not keep a visible record. Only ever
+        clear what you've already exported.
+      </p>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="exportTrustSelect">Trust</label>
+          <select id="exportTrustSelect"></select>
+        </div>
+        <div class="form-group">
+          <label for="clearBeforeDate">Clear entries created before</label>
+          <input type="date" id="clearBeforeDate" />
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:6px;">
+        <button type="button" class="btn-primary" id="exportLogsBtn">Download CSV</button>
+        <button type="button" class="btn-toggle suspend" id="clearLogsBtn">Clear Logs Before Date</button>
+      </div>
+    </div>
+    ` : ''}
+
     <div class="card">
       <h2>${ME.isSuperuser ? 'All Users' : 'Users in Your Trust'}</h2>
       ${ME.isSuperuser ? `
@@ -185,16 +235,25 @@ function render() {
       </div>` : ''}
       <div id="usersList"><div class="empty-state">Loading…</div></div>
     </div>
+
+    <div class="card">
+      <h2>Audit Log</h2>
+      <p style="color:#5a6278;font-size:0.87em;margin-bottom:14px;">Every generated document. Voiding keeps the entry visible — it's never deleted — and requires a reason.</p>
+      <div id="auditLogList"><div class="empty-state">Loading…</div></div>
+    </div>
   `;
 
   document.getElementById('createUserForm').addEventListener('submit', onCreateUser);
   if (ME.isSuperuser) {
     document.getElementById('createTrustForm').addEventListener('submit', onCreateTrust);
     document.getElementById('filterTrustSelect').addEventListener('change', (e) => loadUsers(e.target.value));
+    document.getElementById('exportLogsBtn').addEventListener('click', onExportLogs);
+    document.getElementById('clearLogsBtn').addEventListener('click', onClearLogs);
     loadTrustsIntoSelects();
     loadTrusts();
   }
   loadUsers();
+  loadAuditLog();
 }
 
 function showError(msg) {
@@ -219,8 +278,10 @@ async function loadTrustsIntoSelects() {
     const options = trusts.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
     const userTrustSelect = document.getElementById('userTrustSelect');
     const filterTrustSelect = document.getElementById('filterTrustSelect');
+    const exportTrustSelect = document.getElementById('exportTrustSelect');
     if (userTrustSelect) userTrustSelect.innerHTML = options || '<option value="">No trusts yet — create one above</option>';
     if (filterTrustSelect) filterTrustSelect.insertAdjacentHTML('beforeend', options);
+    if (exportTrustSelect) exportTrustSelect.innerHTML = options || '<option value="">No trusts yet</option>';
   } catch (err) {
     showError(err.message);
   }
@@ -236,19 +297,56 @@ async function loadTrusts() {
     }
     container.innerHTML = `
       <table>
-        <thead><tr><th>Name</th><th>Logo set</th></tr></thead>
+        <thead><tr><th>Name</th><th>Logo</th></tr></thead>
         <tbody>
           ${trusts.map(t => `
             <tr>
               <td>${escapeHtml(t.name)}</td>
-              <td>${t.logo_path ? '✅' : '— (set logo_path manually in Supabase)'}</td>
+              <td>
+                <div class="logo-upload-cell">
+                  <span>${t.logo_path ? '✅ set' : '— none yet'}</span>
+                  <input type="file" accept="image/png" data-logo-trust-id="${t.id}" />
+                </div>
+              </td>
             </tr>
           `).join('')}
         </tbody>
       </table>`;
+
+    container.querySelectorAll('[data-logo-trust-id]').forEach(input => {
+      input.addEventListener('change', () => onUploadLogo(input));
+    });
   } catch (err) {
     container.innerHTML = `<div class="empty-state">Couldn't load trusts.</div>`;
     showError(err.message);
+  }
+}
+
+async function onUploadLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const trustId = input.dataset.logoTrustId;
+
+  if (file.type !== 'image/png') {
+    showError('Logo must be a PNG file.');
+    input.value = '';
+    return;
+  }
+
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    await callAdminUsers('upload-trust-logo', { trust_id: trustId, file_base64: base64 });
+    showSuccess('Logo uploaded.');
+    loadTrusts();
+  } catch (err) {
+    showError(err.message);
+    input.value = '';
   }
 }
 
@@ -269,9 +367,9 @@ async function loadUsers(trustId) {
             <tr>
               <td>${escapeHtml([u.first_name, u.last_name].filter(Boolean).join(' ') || '—')}</td>
               <td>${escapeHtml(u.user_id || '—')}</td>
-              <td><span class="badge badge-role">${escapeHtml(u.role)}</span></td>
-              <td>${u.active ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-suspended">Suspended</span>'}</td>
-              <td>${renderToggleButton(u)}</td>
+              <td><span class="badge badge-role">${escapeHtml(roleDisplayName(u.role))}</span></td>
+              <td>${renderStatusToggle(u)}</td>
+              <td>${renderResetButton(u)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -280,21 +378,41 @@ async function loadUsers(trustId) {
     container.querySelectorAll('[data-toggle-id]').forEach(btn => {
       btn.addEventListener('click', () => onToggleActive(btn.dataset.toggleId, btn.dataset.toggleTo === 'true', trustId));
     });
+    container.querySelectorAll('[data-reset-id]').forEach(btn => {
+      btn.addEventListener('click', () => onResetPassword(btn.dataset.resetId, trustId));
+    });
   } catch (err) {
     container.innerHTML = `<div class="empty-state">Couldn't load users.</div>`;
     showError(err.message);
   }
 }
 
-function renderToggleButton(u) {
+function canActOn(u) {
   // Admins (non-superuser) can only act on ordinary users in their own trust —
-  // the Edge Function enforces this too, this just avoids showing a button
+  // the Edge Function enforces this too, this just avoids showing controls
   // that would immediately fail.
-  if (!ME.isSuperuser && u.role !== 'user') return '';
-  if (u.active) {
-    return `<button class="btn-toggle suspend" data-toggle-id="${u.id}" data-toggle-to="false">Suspend</button>`;
+  return ME.isSuperuser || u.role === 'user';
+}
+
+function renderStatusToggle(u) {
+  if (!canActOn(u)) {
+    return u.active
+      ? '<span class="status-dot on" style="display:inline-block;"></span> <span class="status-label on">Active</span>'
+      : '<span class="status-dot off" style="display:inline-block;"></span> <span class="status-label off">Suspended</span>';
   }
-  return `<button class="btn-toggle approve" data-toggle-id="${u.id}" data-toggle-to="true">Approve</button>`;
+  const dotClass = u.active ? 'on' : 'off';
+  const label = u.active ? 'Active' : 'Suspended';
+  const toggleTo = !u.active;
+  return `
+    <button class="status-toggle" data-toggle-id="${u.id}" data-toggle-to="${toggleTo}" title="Click to ${toggleTo ? 'approve' : 'suspend'}">
+      <span class="status-dot ${dotClass}"></span>
+      <span class="status-label ${dotClass}">${label}</span>
+    </button>`;
+}
+
+function renderResetButton(u) {
+  if (!canActOn(u)) return '';
+  return `<button class="btn-small" data-reset-id="${u.id}">Reset passcode</button>`;
 }
 
 async function onToggleActive(id, active, trustId) {
@@ -302,6 +420,159 @@ async function onToggleActive(id, active, trustId) {
     await callAdminUsers('set-active', { id, active });
     showSuccess(active ? 'Account approved.' : 'Account suspended.');
     loadUsers(trustId);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function onResetPassword(id, trustId) {
+  const newPasscode = prompt('Enter a new passcode for this account (min. 6 characters).\nThey will be required to set their own new passcode on next login.');
+  if (newPasscode === null) return; // cancelled
+  if (newPasscode.length < 6) { showError('Passcode must be at least 6 characters.'); return; }
+
+  try {
+    await callAdminUsers('reset-password', { id, new_passcode: newPasscode });
+    showSuccess('Passcode reset — they will be prompted to set a new one on next login.');
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function loadAuditLog() {
+  const container = document.getElementById('auditLogList');
+  try {
+    const { entries } = await callAdminUsers('list-log-entries', {});
+    if (!entries.length) {
+      container.innerHTML = '<div class="empty-state">No entries yet.</div>';
+      return;
+    }
+    container.innerHTML = `
+      <table>
+        <thead>
+          <tr><th>Date</th><th>App</th><th>Cost Centre</th><th>Processed By</th><th>First</th><th>Last</th><th>Total</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          ${entries.map(auditRowHtml).join('')}
+        </tbody>
+      </table>`;
+
+    container.querySelectorAll('[data-void-id]').forEach(btn => {
+      btn.addEventListener('click', () => onVoidEntry(btn.dataset.voidId));
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state">Couldn't load the audit log.</div>`;
+    showError(err.message);
+  }
+}
+
+function auditRowHtml(e) {
+  const p = e.payload || {};
+  const date = new Date(e.created_at).toLocaleString('en-GB');
+  const appLabel = e.app === 'ss' ? 'FP10SS' : 'FP10HNC';
+  let statusBadge, actionCell;
+
+  if (e.voided) {
+    statusBadge = `<span class="badge badge-voided">Voided</span>`;
+    actionCell = `<span style="color:#8a91a3;font-size:0.8em;" title="${escapeHtml(e.void_reason || '')}">reason: ${escapeHtml(e.void_reason || '—')}</span>`;
+  } else if (e.verified) {
+    statusBadge = '<span class="badge badge-verified">Verified</span>';
+    actionCell = `<button class="btn-small danger" data-void-id="${e.id}">Void</button>`;
+  } else {
+    statusBadge = '<span class="badge badge-pending">Pending</span>';
+    actionCell = `<button class="btn-small danger" data-void-id="${e.id}">Void</button>`;
+  }
+
+  return `
+    <tr class="${e.voided ? 'voided' : ''}">
+      <td>${escapeHtml(date)}</td>
+      <td>${appLabel}</td>
+      <td>${escapeHtml(p.deptCode || '—')}</td>
+      <td>${escapeHtml(p.processedBy || '—')}</td>
+      <td>${escapeHtml(String(p.first ?? '—'))}</td>
+      <td>${escapeHtml(String(p.last ?? '—'))}</td>
+      <td>${escapeHtml(String(p.total ?? '—'))}</td>
+      <td>${statusBadge}</td>
+      <td>${actionCell}</td>
+    </tr>`;
+}
+
+async function onVoidEntry(id) {
+  const reason = prompt('Reason for voiding this entry (required — it will be kept, just marked void):');
+  if (reason === null) return; // cancelled
+  if (!reason.trim()) { showError('A reason is required to void an entry.'); return; }
+
+  try {
+    await callAdminUsers('void-entry', { id, reason: reason.trim() });
+    showSuccess('Entry voided.');
+    loadAuditLog();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function onExportLogs() {
+  const trustId = document.getElementById('exportTrustSelect').value;
+  if (!trustId) { showError('Select a trust first.'); return; }
+  const trustName = document.getElementById('exportTrustSelect').selectedOptions[0]?.textContent || 'trust';
+
+  try {
+    const { entries } = await callAdminUsers('export-log-entries', { trust_id: trustId });
+    if (!entries.length) { showSuccess('No entries to export for this trust.'); return; }
+
+    const headers = ['Date', 'App', 'Cost Centre', 'Processed By', 'First Serial', 'Last Serial', 'Total', 'Voided', 'Void Reason', 'Verified'];
+    const rows = entries.map(e => {
+      const p = e.payload || {};
+      return [
+        new Date(e.created_at).toLocaleString('en-GB'),
+        e.app === 'ss' ? 'FP10SS' : 'FP10HNC',
+        p.deptCode || '',
+        p.processedBy || '',
+        p.first ?? '',
+        p.last ?? '',
+        p.total ?? '',
+        e.voided ? 'Yes' : 'No',
+        e.void_reason || '',
+        e.verified ? 'Yes' : 'No',
+      ];
+    });
+
+    const csv = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${trustName.replace(/[^a-z0-9]+/gi, '-')}-fp10-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showSuccess(`Exported ${entries.length} entries.`);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function onClearLogs() {
+  const trustId = document.getElementById('exportTrustSelect').value;
+  const beforeDate = document.getElementById('clearBeforeDate').value;
+  if (!trustId) { showError('Select a trust first.'); return; }
+  if (!beforeDate) { showError('Choose a cutoff date first.'); return; }
+
+  const trustName = document.getElementById('exportTrustSelect').selectedOptions[0]?.textContent || 'this trust';
+  const confirmed = confirm(
+    `This will PERMANENTLY delete every ${trustName} entry created before ${beforeDate}.\n\n` +
+    `Make sure you've downloaded a CSV export first — this cannot be undone.\n\nContinue?`
+  );
+  if (!confirmed) return;
+
+  try {
+    const { deleted } = await callAdminUsers('clear-log-entries', {
+      trust_id: trustId,
+      before_date: new Date(beforeDate + 'T00:00:00').toISOString(),
+    });
+    showSuccess(`Cleared ${deleted} entries.`);
   } catch (err) {
     showError(err.message);
   }
@@ -335,12 +606,23 @@ async function onCreateUser(e) {
   }
   try {
     await callAdminUsers('create-user', payload);
-    showSuccess(`User "${payload.user_id}" created — suspended until approved below.`);
+    showSuccess(`Account "${payload.user_id}" created — suspended until approved below.`);
     document.getElementById('createUserForm').reset();
     loadUsers(ME.isSuperuser ? document.getElementById('filterTrustSelect').value : undefined);
   } catch (err) {
     showError(err.message);
   }
+}
+
+function roleDisplayName(role) {
+  const names = {
+    user: 'Pharmacy Assistant',
+    verifier: 'Pharmacy Technician',
+    admin: 'Trust Admin',
+    superuser: 'Superuser',
+    auditor: 'Auditor',
+  };
+  return names[role] || role;
 }
 
 function escapeHtml(str) {

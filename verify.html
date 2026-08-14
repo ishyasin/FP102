@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Verify — FP10 Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Fira Sans', Arial, sans-serif;background:#f4f6f9;color:#1a1a2e;}
+  header{background:#1b3a6b;padding:12px 32px;display:flex;align-items:center;justify-content:space-between;}
+  .gdg-text-logo{display:flex;align-items:baseline;gap:6px;line-height:1;}
+  .gdg-text-logo-main{font-size:17px;font-weight:700;color:#fff;}
+  .gdg-text-logo-sub{font-size:12px;font-weight:400;color:rgba(255,255,255,0.65);}
+  .btn-header{background:transparent;border:1px solid rgba(255,255,255,0.4);color:#fff;padding:7px 14px;border-radius:5px;font-size:0.85em;font-weight:600;cursor:pointer;}
+  .btn-header:hover{background:rgba(255,255,255,0.1);}
+
+  main{max-width:1100px;margin:0 auto;padding:32px 24px 60px;}
+  h1{font-size:1.5em;color:#1b3a6b;margin-bottom:4px;}
+  .subtitle{color:#5a6278;font-size:0.9em;margin-bottom:28px;}
+
+  .start-card{background:#fff;border-radius:8px;padding:48px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.08);border:1px solid #e5e8ee;}
+  .start-card p{color:#5a6278;margin-bottom:24px;font-size:0.95em;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.5;}
+
+  button.btn-primary{background:#e8176e;color:#fff;border:none;padding:13px 28px;border-radius:6px;font-weight:700;font-size:0.95em;cursor:pointer;}
+  button.btn-primary:hover:not(:disabled){background:#c4115c;}
+  button.btn-primary:disabled{opacity:0.6;cursor:not-allowed;}
+  button.btn-secondary{background:#fff;color:#1b3a6b;border:1px solid #d0d5dd;padding:10px 18px;border-radius:6px;font-weight:600;font-size:0.87em;cursor:pointer;}
+  button.btn-secondary:hover{background:#f4f6f9;}
+
+  .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .toolbar-actions{display:flex;gap:10px;}
+
+  .card{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border:1px solid #e5e8ee;}
+  table{width:100%;border-collapse:collapse;font-size:0.86em;}
+  th{text-align:left;padding:9px 8px;color:#5a6278;font-weight:600;font-size:0.8em;text-transform:uppercase;letter-spacing:0.03em;border-bottom:2px solid #e5e8ee;}
+  td{padding:9px 8px;border-bottom:1px solid #eef0f4;vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr.voided td{opacity:0.5;}
+
+  .badge{display:inline-block;padding:3px 9px;border-radius:12px;font-size:0.76em;font-weight:700;white-space:nowrap;}
+  .badge-pending{background:#fff3cd;color:#8a6416;}
+  .badge-verified{background:#d4f4dd;color:#1a7a3c;}
+  .badge-voided{background:#f8d7da;color:#a01c2e;}
+
+  .btn-verify{padding:6px 12px;border-radius:5px;font-size:0.82em;font-weight:600;cursor:pointer;background:#d4f4dd;color:#1a7a3c;border:1px solid #a8e0b8;}
+  .btn-verify:hover{background:#bdeecb;}
+  .own-note{color:#8a91a3;font-size:0.8em;font-style:italic;}
+
+  .empty-state{color:#8a91a3;font-size:0.9em;padding:20px;text-align:center;}
+  .error{background:#f8d7da;color:#721c24;padding:10px 12px;border-radius:6px;font-size:0.85em;margin-bottom:14px;display:none;}
+  .error.show{display:block;}
+  .success{background:#d4f4dd;color:#1a7a3c;padding:10px 12px;border-radius:6px;font-size:0.85em;margin-bottom:14px;display:none;}
+  .success.show{display:block;}
+  .not-authorised{max-width:480px;margin:80px auto;text-align:center;color:#5a6278;}
+</style>
+</head>
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="shared/fp10-api.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+<header>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div style="width:4px;height:32px;background:#e8176e;border-radius:2px;flex-shrink:0;"></div>
+    <div class="gdg-text-logo">
+      <span class="gdg-text-logo-main">GD&amp;G</span><span class="gdg-text-logo-sub">Special Projects™ — Verification</span>
+    </div>
+  </div>
+  <button class="btn-header" onclick="signOut()">Sign out</button>
+</header>
+
+<main id="mainContent">
+  <div class="empty-state">Loading…</div>
+</main>
+
+<script>
+let ME = null;
+let ENTRIES = [];
+
+async function init() {
+  const session = await requireSession();
+  if (!session) return;
+
+  ME = await getMyProfile();
+  const main = document.getElementById('mainContent');
+
+  if (!ME || (!ME.isVerifier && !ME.isSuperuser)) {
+    main.innerHTML = `
+      <div class="not-authorised">
+        <h1 style="margin-bottom:10px;">Not authorised</h1>
+        <p>This page is only available to Pharmacy Technician accounts.</p>
+      </div>`;
+    return;
+  }
+
+  renderStart();
+}
+
+function renderStart() {
+  document.getElementById('mainContent').innerHTML = `
+    <h1>Final Check</h1>
+    <p class="subtitle">Review generated FP10SS/FP10HNC entries and verify them as correct.</p>
+    <div class="start-card">
+      <p>Starting a final check will load every generated entry for ${ME.isSuperuser ? 'the selected trust' : 'your trust'} — pending, already verified, and voided — so you can review and verify anything outstanding.</p>
+      <button class="btn-primary" id="startBtn">Start Final Check</button>
+    </div>`;
+  document.getElementById('startBtn').addEventListener('click', startCheck);
+}
+
+async function startCheck() {
+  const main = document.getElementById('mainContent');
+  main.innerHTML = '<div class="empty-state">Loading entries…</div>';
+  try {
+    const { entries } = await callAdminUsers('list-log-entries', {});
+    ENTRIES = entries;
+    renderList();
+  } catch (err) {
+    main.innerHTML = `<div class="empty-state">Couldn't load entries.</div>`;
+    showErrorStandalone(err.message);
+  }
+}
+
+function renderList() {
+  const main = document.getElementById('mainContent');
+  const pendingCount = ENTRIES.filter(e => !e.verified && !e.voided).length;
+
+  main.innerHTML = `
+    <h1>Final Check</h1>
+    <p class="subtitle">${pendingCount} entr${pendingCount === 1 ? 'y' : 'ies'} awaiting verification.</p>
+    <div id="alertBox" class="error"></div>
+    <div id="successBox" class="success"></div>
+    <div class="toolbar">
+      <button class="btn-secondary" id="refreshBtn">Refresh</button>
+      <div class="toolbar-actions">
+        <button class="btn-primary" id="downloadBtn">Download Report</button>
+      </div>
+    </div>
+    <div class="card">
+      ${ENTRIES.length === 0 ? '<div class="empty-state">No entries yet.</div>' : renderTable()}
+    </div>
+  `;
+
+  document.getElementById('refreshBtn').addEventListener('click', startCheck);
+  document.getElementById('downloadBtn').addEventListener('click', downloadReport);
+  document.querySelectorAll('[data-verify-id]').forEach(btn => {
+    btn.addEventListener('click', () => onVerify(btn.dataset.verifyId));
+  });
+}
+
+function renderTable() {
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th><th>App</th><th>Cost Centre</th><th>Processed By</th>
+          <th>First</th><th>Last</th><th>Total</th><th>Status</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${ENTRIES.map(rowHtml).join('')}
+      </tbody>
+    </table>`;
+}
+
+function rowHtml(e) {
+  const p = e.payload || {};
+  const date = new Date(e.created_at).toLocaleString('en-GB');
+  const appLabel = e.app === 'ss' ? 'FP10SS' : 'FP10HNC';
+  let statusBadge, actionCell;
+
+  if (e.voided) {
+    statusBadge = '<span class="badge badge-voided">Voided</span>';
+    actionCell = '';
+  } else if (e.verified) {
+    statusBadge = '<span class="badge badge-verified">Verified</span>';
+    actionCell = '';
+  } else {
+    statusBadge = '<span class="badge badge-pending">Pending</span>';
+    actionCell = (e.user_id === ME.id)
+      ? '<span class="own-note">Not yours to verify</span>'
+      : `<button class="btn-verify" data-verify-id="${e.id}">Verify</button>`;
+  }
+
+  return `
+    <tr class="${e.voided ? 'voided' : ''}">
+      <td>${escapeHtml(date)}</td>
+      <td>${appLabel}</td>
+      <td>${escapeHtml(p.deptCode || '—')}</td>
+      <td>${escapeHtml(p.processedBy || '—')}</td>
+      <td>${escapeHtml(String(p.first ?? '—'))}</td>
+      <td>${escapeHtml(String(p.last ?? '—'))}</td>
+      <td>${escapeHtml(String(p.total ?? '—'))}</td>
+      <td>${statusBadge}</td>
+      <td>${actionCell}</td>
+    </tr>`;
+}
+
+async function onVerify(id) {
+  try {
+    await callAdminUsers('verify-entry', { id });
+    const entry = ENTRIES.find(e => e.id === id);
+    if (entry) { entry.verified = true; entry.verified_at = new Date().toISOString(); }
+    renderList();
+    showSuccessStandalone('Entry verified.');
+  } catch (err) {
+    renderList();
+    showErrorStandalone(err.message);
+  }
+}
+
+function downloadReport() {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+  pdf.setFontSize(14);
+  pdf.text('FP10 Verification Report', 14, 15);
+  pdf.setFontSize(9);
+  pdf.text(`Generated ${new Date().toLocaleString('en-GB')} by ${ME.fullName}`, 14, 21);
+
+  const rows = ENTRIES.map(e => {
+    const p = e.payload || {};
+    const status = e.voided ? 'Voided' : e.verified ? 'Verified' : 'Pending';
+    return [
+      new Date(e.created_at).toLocaleString('en-GB'),
+      e.app === 'ss' ? 'FP10SS' : 'FP10HNC',
+      p.deptCode || '—',
+      p.processedBy || '—',
+      String(p.first ?? '—'),
+      String(p.last ?? '—'),
+      String(p.total ?? '—'),
+      status,
+    ];
+  });
+
+  pdf.autoTable({
+    startY: 27,
+    head: [['Date', 'App', 'Cost Centre', 'Processed By', 'First', 'Last', 'Total', 'Status']],
+    body: rows,
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [27, 58, 107] },
+  });
+
+  pdf.save(`fp10-verification-report-${Date.now()}.pdf`);
+}
+
+function showErrorStandalone(msg) {
+  const box = document.getElementById('alertBox');
+  if (!box) { alert(msg); return; }
+  box.textContent = msg;
+  box.classList.add('show');
+  setTimeout(() => box.classList.remove('show'), 6000);
+}
+function showSuccessStandalone(msg) {
+  const box = document.getElementById('successBox');
+  if (!box) return;
+  box.textContent = msg;
+  box.classList.add('show');
+  setTimeout(() => box.classList.remove('show'), 4000);
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
+}
+
+init();
+</script>
+</body>
+</html>
